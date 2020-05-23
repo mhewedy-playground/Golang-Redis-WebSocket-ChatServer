@@ -15,9 +15,8 @@ func main() {
 
 	r := mux.NewRouter()
 
-	r.Path("/user/{user}/connect").Methods("POST").HandlerFunc(h(rdb, connectHandler))
-	r.Path("/user/{user}/subscribe/{channel}").Methods("POST").HandlerFunc(h(rdb, subscribeHandler))
-	r.Path("/user/{user}/unsubscribe/{channel}").Methods("POST").HandlerFunc(h(rdb, unsubscribeHandler))
+	r.Path("/chat").Methods("GET").HandlerFunc(h(rdb, chatHandler))
+	r.Path("/channels").Methods("GET").HandlerFunc(h(rdb, channelsHandler))
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
