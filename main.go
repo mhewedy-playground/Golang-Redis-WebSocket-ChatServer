@@ -8,26 +8,26 @@ import (
 )
 
 type user struct {
-	name  string
-	rooms []string
+	name     string
+	channels []string
 
 	stopListener    chan bool
 	listenerRunning bool
 
-	roomsHandler map[string]*redis.PubSub
+	channelsHandler map[string]*redis.PubSub
 }
 
 func newUser(name string) *user {
 	return &user{
-		name:         name,
-		stopListener: make(chan bool),
-		roomsHandler: make(map[string]*redis.PubSub),
+		name:            name,
+		stopListener:    make(chan bool),
+		channelsHandler: make(map[string]*redis.PubSub),
 	}
 }
 
 func (u *user) connect(rdb *redis.Client) error {
-	// get all user rooms (from DB) and start subscribe
-	r, err := rdb.SMembers(fmt.Sprintf("user:%s:rooms", u.name)).Result()
+	// get all user channels (from DB) and start subscribe
+	r, err := rdb.SMembers(fmt.Sprintf("user:%s:channels", u.name)).Result()
 	if err != nil {
 		return err
 	}
@@ -35,70 +35,70 @@ func (u *user) connect(rdb *redis.Client) error {
 		return nil
 	}
 
-	// if use has saved rooms on server, then subscribe on each room
-	for _, room := range r {
-		return u.subscribe(room, rdb)
+	// if use has saved channels on server, then subscribe on each channel
+	for _, channel := range r {
+		return u.subscribe(channel, rdb)
 	}
 
 	return nil
 }
 
-func (u *user) subscribe(room string, rdb *redis.Client) error {
+func (u *user) subscribe(channel string, rdb *redis.Client) error {
 	// check if already subscribed
-	for i := range u.rooms {
-		if u.rooms[i] == room {
+	for i := range u.channels {
+		if u.channels[i] == channel {
 			return nil
 		}
 	}
 
-	// save user room to server
-	userRoomsKey := fmt.Sprintf("user:%s:rooms", u.name)
-	if err := rdb.SAdd(userRoomsKey, room).Err(); err != nil {
+	// save user channel to server
+	userchannelsKey := fmt.Sprintf("user:%s:channels", u.name)
+	if err := rdb.SAdd(userchannelsKey, channel).Err(); err != nil {
 		return err
 	}
 
-	// get all user rooms from server, set it as user.rooms and start subscribing
-	r, err := rdb.SMembers(userRoomsKey).Result()
+	// get all user channels from server, set it as user.channels and start subscribing
+	r, err := rdb.SMembers(userchannelsKey).Result()
 	if err != nil {
 		return err
 	}
-	u.rooms = r
+	u.channels = r
 
 	if u.listenerRunning {
 		u.stopListener <- true
 	}
 
-	u.doSubscribe(room, rdb)
+	u.doSubscribe(channel, rdb)
 
 	return nil
 }
 
-func (u *user) doSubscribe(room string, rdb *redis.Client) {
-	// subscribe all rooms in one request
-	pubSub := rdb.Subscribe(u.rooms...)
-	// keep room handler to be used in unsubscribe
-	u.roomsHandler[room] = pubSub
+func (u *user) doSubscribe(channel string, rdb *redis.Client) {
+	// subscribe all channels in one request
+	pubSub := rdb.Subscribe(u.channels...)
+	// keep channel handler to be used in unsubscribe
+	u.channelsHandler[channel] = pubSub
 
 	// The Listener
 	go func() {
 		u.listenerRunning = true
-		fmt.Println("starting the listener for user:", u.name, "on rooms:", u.rooms)
+		fmt.Println("starting the listener for user:", u.name, "on channels:", u.channels)
 		for {
 			select {
 			case msg, ok := <-pubSub.Channel():
 				if !ok {
 					break
 				}
-				fmt.Println("msg:", msg.Payload, "room:", msg.Channel)
+				fmt.Println("msg:", msg.Payload, "channel:", msg.Channel)
 
 			case <-u.stopListener:
-				fmt.Println("Stop listening for user:", u.name, "on old rooms")
+				fmt.Println("Stop listening for user:", u.name, "on old channels")
 
-				for k, v := range u.roomsHandler {
+				for k, v := range u.channelsHandler {
 					if err := v.Unsubscribe(); err != nil {
 						fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
 					}
-					delete(u.roomsHandler, k)
+					delete(u.channelsHandler, k)
 				}
 				break
 			}
@@ -119,19 +119,18 @@ func main() {
 
 	// TODO:
 	/*
-		1. save 2 or 3 rooms under "default_rooms" list on server
-		on on each connect, let the user subscribe to such "default_rooms"
+		1. save 2 or 3 channels under "default_channels" list on server
+		on on each connect, let the user subscribe to such "default_channels"
 
-		2. allow user to create a new room on demand (he can invite other users by room name)
-		(make it room:user:<user supplied name>) might make it visible with "default_rooms" as well
+		2. allow user to create a new channel on demand (he can invite other users by channel name)
+		(make it channel:user:<user supplied name>) might make it visible with "default_channels" as well
 
-		3. allow direct chat by create a room with name "room:direct:user1:user2" make both users subscribe to the room
+		3. allow direct chat by create a channel with name "channel:direct:user1:user2" make both users subscribe to the channel
 
-		4. create a list room api to list all public rooms
+		4. create a list channel api to list all public channels
 
 	*/
 
-	//
 	//if err := u.subscribe("general", rdb); err != nil {
 	//	log.Fatal(err)
 	//}
