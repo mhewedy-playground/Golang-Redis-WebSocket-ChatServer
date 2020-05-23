@@ -52,13 +52,13 @@ func (u *user) subscribe(channel string, rdb *redis.Client) error {
 	}
 
 	// save user channel to server
-	userchannelsKey := fmt.Sprintf("user:%s:channels", u.name)
-	if err := rdb.SAdd(userchannelsKey, channel).Err(); err != nil {
+	userChannelsKey := fmt.Sprintf("user:%s:channels", u.name)
+	if err := rdb.SAdd(userChannelsKey, channel).Err(); err != nil {
 		return err
 	}
 
 	// get all user channels from server, set it as user.channels and start subscribing
-	r, err := rdb.SMembers(userchannelsKey).Result()
+	r, err := rdb.SMembers(userChannelsKey).Result()
 	if err != nil {
 		return err
 	}
