@@ -98,6 +98,9 @@ func (u *user) doSubscribe(channel string, rdb *redis.Client) {
 					if err := v.Unsubscribe(); err != nil {
 						fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
 					}
+					if err := v.Close(); err != nil {
+						fmt.Fprintln(os.Stderr, "unable to close conn", err)
+					}
 					delete(u.channelsHandler, k)
 				}
 				break
@@ -131,25 +134,25 @@ func main() {
 
 	*/
 
-	//if err := u.subscribe("general", rdb); err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//if err := u.subscribe("programming", rdb); err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//if err := u.subscribe("New", rdb); err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//if err := u.subscribe("Old", rdb); err != nil {
-	//	log.Fatal(err)
-	//}
-	//
-	//if err := u.subscribe("OldPlusPlus", rdb); err != nil {
-	//	log.Fatal(err)
-	//}
+	if err := u.subscribe("general", rdb); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := u.subscribe("programming", rdb); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := u.subscribe("New", rdb); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := u.subscribe("Old", rdb); err != nil {
+		log.Fatal(err)
+	}
+
+	if err := u.subscribe("OldPlusPlus", rdb); err != nil {
+		log.Fatal(err)
+	}
 
 	/*
 		r := mux.NewRouter()
