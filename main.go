@@ -7,14 +7,15 @@ import (
 	"os"
 )
 
+const userChannelFmt = "user:%s:channels"
+
 type user struct {
-	name     string
-	channels []string
+	name            string
+	channels        []string
+	channelsHandler *redis.PubSub
 
 	stopListener    chan bool
 	listenerRunning bool
-
-	channelsHandler *redis.PubSub
 }
 
 func newUser(name string) *user {
@@ -24,55 +25,63 @@ func newUser(name string) *user {
 	}
 }
 
-func (u *user) connect(rdb *redis.Client) error {
-	// get all user channels (from DB) and start subscribe
-	r, err := rdb.SMembers(fmt.Sprintf("user:%s:channels", u.name)).Result()
-	if err != nil {
-		return err
-	}
-	if len(r) == 0 {
+func (u *user) subscribe(rdb *redis.Client, channel string) error {
+
+	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
+
+	if rdb.SIsMember(userChannelsKey, channel).Val() {
 		return nil
 	}
-
-	// if use has saved channels on server, then subscribe on each channel
-	for _, channel := range r {
-		return u.subscribe(channel, rdb)
-	}
-
-	return nil
-}
-
-func (u *user) subscribe(channel string, rdb *redis.Client) error {
-	// check if already subscribed
-	for i := range u.channels {
-		if u.channels[i] == channel {
-			return nil
-		}
-	}
-
-	// save user channel to server
-	userChannelsKey := fmt.Sprintf("user:%s:channels", u.name)
 	if err := rdb.SAdd(userChannelsKey, channel).Err(); err != nil {
 		return err
 	}
 
-	// get all user channels from server, set it as user.channels and start subscribing
-	r, err := rdb.SMembers(userChannelsKey).Result()
+	return u.connect(rdb)
+}
+
+func (u *user) unsubscribe(rdb *redis.Client, channel string) error {
+
+	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
+
+	if !rdb.SIsMember(userChannelsKey, channel).Val() {
+		return nil
+	}
+	if err := rdb.SRem(userChannelsKey, channel).Err(); err != nil {
+		return err
+	}
+
+	return u.connect(rdb)
+}
+
+func (u *user) connect(rdb *redis.Client) error {
+	// get all user channels (from DB) and start subscribe
+	c, err := rdb.SMembers(fmt.Sprintf("user:%s:channels", u.name)).Result()
 	if err != nil {
 		return err
 	}
-	u.channels = r
+	if len(c) == 0 {
+		fmt.Println("no channels to connect to for user: ", u.name)
+		return nil
+	}
 
+	if u.channelsHandler != nil {
+		if err := u.channelsHandler.Unsubscribe(); err != nil {
+			fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
+		}
+		if err := u.channelsHandler.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, "unable to close conn", err)
+		}
+	}
 	if u.listenerRunning {
 		u.stopListener <- true
 	}
 
-	u.doSubscribe(channel, rdb)
+	u.channels = c
 
-	return nil
+	return u.doConnect(rdb)
 }
 
-func (u *user) doSubscribe(channel string, rdb *redis.Client) {
+func (u *user) doConnect(rdb *redis.Client) error {
 	// subscribe all channels in one request
 	pubSub := rdb.Subscribe(u.channels...)
 	// keep channel handler to be used in unsubscribe
@@ -91,19 +100,12 @@ func (u *user) doSubscribe(channel string, rdb *redis.Client) {
 				fmt.Println("msg:", msg.Payload, "channel:", msg.Channel)
 
 			case <-u.stopListener:
-				fmt.Println("Stop listening for user:", u.name, "on old channels")
-
-				if err := u.channelsHandler.Unsubscribe(); err != nil {
-					fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
-				}
-				if err := u.channelsHandler.Close(); err != nil {
-					fmt.Fprintln(os.Stderr, "unable to close conn", err)
-				}
-
 				break
 			}
 		}
 	}()
+
+	return nil
 }
 
 var rdb *redis.Client
@@ -131,23 +133,23 @@ func main() {
 
 	*/
 
-	if err := u.subscribe("general", rdb); err != nil {
-		log.Fatal(err)
-	}
+	//if err := u.subscribe(rdb, "ch1"); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//if err := u.subscribe(rdb, "ch2"); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//if err := u.subscribe(rdb, "ch3"); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//if err := u.subscribe(rdb, "ch4"); err != nil {
+	//	log.Fatal(err)
+	//}
 
-	if err := u.subscribe("programming", rdb); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := u.subscribe("New", rdb); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := u.subscribe("Old", rdb); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := u.subscribe("OldPlusPlus", rdb); err != nil {
+	if err := u.unsubscribe(rdb, "ch4"); err != nil {
 		log.Fatal(err)
 	}
 
