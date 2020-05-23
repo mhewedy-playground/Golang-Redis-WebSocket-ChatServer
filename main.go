@@ -120,6 +120,21 @@ func main() {
 	if err := u.connect(rdb); err != nil {
 		log.Fatal(err)
 	}
+
+	// TODO:
+	/*
+		1. save 2 or 3 rooms under "default_rooms" list on server
+		on on each connect, let the user subscribe to such "default_rooms"
+
+		2. allow user to create a new room on demand (he can invite other users by room name)
+		(make it room:user:<user supplied name>) might make it visible with "default_rooms" as well
+
+		3. allow direct chat by create a room with name "room:direct:user1:user2" make both users subscribe to the room
+
+		4. create a list room api to list all public rooms
+
+	*/
+
 	//
 	//if err := u.subscribe("general", rdb); err != nil {
 	//	log.Fatal(err)
