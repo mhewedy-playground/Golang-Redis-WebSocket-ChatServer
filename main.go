@@ -14,14 +14,13 @@ type user struct {
 	stopListener    chan bool
 	listenerRunning bool
 
-	channelsHandler map[string]*redis.PubSub
+	channelsHandler *redis.PubSub
 }
 
 func newUser(name string) *user {
 	return &user{
-		name:            name,
-		stopListener:    make(chan bool),
-		channelsHandler: make(map[string]*redis.PubSub),
+		name:         name,
+		stopListener: make(chan bool),
 	}
 }
 
@@ -77,7 +76,7 @@ func (u *user) doSubscribe(channel string, rdb *redis.Client) {
 	// subscribe all channels in one request
 	pubSub := rdb.Subscribe(u.channels...)
 	// keep channel handler to be used in unsubscribe
-	u.channelsHandler[channel] = pubSub
+	u.channelsHandler = pubSub
 
 	// The Listener
 	go func() {
@@ -94,15 +93,13 @@ func (u *user) doSubscribe(channel string, rdb *redis.Client) {
 			case <-u.stopListener:
 				fmt.Println("Stop listening for user:", u.name, "on old channels")
 
-				for k, v := range u.channelsHandler {
-					if err := v.Unsubscribe(); err != nil {
-						fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
-					}
-					if err := v.Close(); err != nil {
-						fmt.Fprintln(os.Stderr, "unable to close conn", err)
-					}
-					delete(u.channelsHandler, k)
+				if err := u.channelsHandler.Unsubscribe(); err != nil {
+					fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
 				}
+				if err := u.channelsHandler.Close(); err != nil {
+					fmt.Fprintln(os.Stderr, "unable to close conn", err)
+				}
+
 				break
 			}
 		}
