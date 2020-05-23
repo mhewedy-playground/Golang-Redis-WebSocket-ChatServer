@@ -13,14 +13,14 @@ type user struct {
 	channels        []string
 	channelsHandler *redis.PubSub
 
-	stopListener    chan bool
+	stopListener    chan struct{}
 	listenerRunning bool
 }
 
 func newUser(name string) *user {
 	return &user{
 		name:         name,
-		stopListener: make(chan bool),
+		stopListener: make(chan struct{}),
 	}
 }
 
@@ -72,7 +72,7 @@ func (u *user) connect(rdb *redis.Client) error {
 		}
 	}
 	if u.listenerRunning {
-		u.stopListener <- true
+		close(u.stopListener)
 	}
 
 	u.channels = c
