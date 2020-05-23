@@ -20,20 +20,18 @@ func (u *user) connect(rdb *redis.Client) error {
 	if err != nil {
 		return err
 	}
-	u.rooms = r
-
-	if len(u.rooms) == 0 {
+	if len(r) == 0 {
 		return nil
 	}
 
-	u.doSubscribe("", rdb)
+	for _, room := range u.rooms {
+		return u.subscribe(room, rdb)
+	}
 
 	return nil
 }
 
 func (u *user) subscribe(room string, rdb *redis.Client) error {
-
-	fmt.Println(">>>", room, u.rooms)
 
 	// check if already subscribed
 	for i := range u.rooms {
@@ -68,9 +66,7 @@ func (u *user) subscribe(room string, rdb *redis.Client) error {
 
 func (u *user) doSubscribe(room string, rdb *redis.Client) {
 	pubSub := rdb.Subscribe(u.rooms...)
-	if len(room) > 0 {
-		u.roomsPubsub[room] = pubSub
-	}
+	u.roomsPubsub[room] = pubSub
 
 	go func() {
 		u.running = true
