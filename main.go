@@ -8,11 +8,21 @@ import (
 )
 
 type user struct {
-	name        string
-	rooms       []string
-	stopRunning chan bool
-	running     bool
-	roomsPubsub map[string]*redis.PubSub
+	name  string
+	rooms []string
+
+	stopListener    chan bool
+	listenerRunning bool
+
+	roomsHandler map[string]*redis.PubSub
+}
+
+func newUser(name string) *user {
+	return &user{
+		name:         name,
+		stopListener: make(chan bool),
+		roomsHandler: make(map[string]*redis.PubSub),
+	}
 }
 
 func (u *user) connect(rdb *redis.Client) error {
@@ -25,7 +35,8 @@ func (u *user) connect(rdb *redis.Client) error {
 		return nil
 	}
 
-	for _, room := range u.rooms {
+	// if use has saved rooms on server, then subscribe on each room
+	for _, room := range r {
 		return u.subscribe(room, rdb)
 	}
 
@@ -33,7 +44,6 @@ func (u *user) connect(rdb *redis.Client) error {
 }
 
 func (u *user) subscribe(room string, rdb *redis.Client) error {
-
 	// check if already subscribed
 	for i := range u.rooms {
 		if u.rooms[i] == room {
@@ -41,21 +51,21 @@ func (u *user) subscribe(room string, rdb *redis.Client) error {
 		}
 	}
 
-	// add room to user
-	userRooms := fmt.Sprintf("user:%s:rooms", u.name)
-	if err := rdb.SAdd(userRooms, room).Err(); err != nil {
+	// save user room to server
+	userRoomsKey := fmt.Sprintf("user:%s:rooms", u.name)
+	if err := rdb.SAdd(userRoomsKey, room).Err(); err != nil {
 		return err
 	}
 
-	// get all user rooms (from DB) and start subscribe
-	r, err := rdb.SMembers(userRooms).Result()
+	// get all user rooms from server, set it as user.rooms and start subscribing
+	r, err := rdb.SMembers(userRoomsKey).Result()
 	if err != nil {
 		return err
 	}
 	u.rooms = r
 
-	if u.running {
-		u.stopRunning <- true
+	if u.listenerRunning {
+		u.stopListener <- true
 	}
 
 	u.doSubscribe(room, rdb)
@@ -64,29 +74,31 @@ func (u *user) subscribe(room string, rdb *redis.Client) error {
 }
 
 func (u *user) doSubscribe(room string, rdb *redis.Client) {
+	// subscribe all rooms in one request
 	pubSub := rdb.Subscribe(u.rooms...)
-	u.roomsPubsub[room] = pubSub
+	// keep room handler to be used in unsubscribe
+	u.roomsHandler[room] = pubSub
 
+	// The Listener
 	go func() {
-		u.running = true
+		u.listenerRunning = true
 		fmt.Println("starting the listener for user:", u.name, "on rooms:", u.rooms)
 		for {
 			select {
-
 			case msg, ok := <-pubSub.Channel():
 				if !ok {
 					break
 				}
-				fmt.Println(msg.Payload, msg.Channel)
+				fmt.Println("msg:", msg.Payload, "room:", msg.Channel)
 
-			case <-u.stopRunning:
+			case <-u.stopListener:
 				fmt.Println("Stop listening for user:", u.name, "on old rooms")
 
-				for k, v := range u.roomsPubsub {
+				for k, v := range u.roomsHandler {
 					if err := v.Unsubscribe(); err != nil {
 						fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
 					}
-					delete(u.roomsPubsub, k)
+					delete(u.roomsHandler, k)
 				}
 				break
 			}
@@ -104,35 +116,30 @@ func main() {
 
 	rdb = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
 
-	u := &user{
-		name:        "Wael",
-		stopRunning: make(chan bool),
-		roomsPubsub: make(map[string]*redis.PubSub),
-	}
-
+	u := newUser("Wael")
 	if err := u.connect(rdb); err != nil {
 		log.Fatal(err)
 	}
-
-	if err := u.subscribe("general", rdb); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := u.subscribe("programming", rdb); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := u.subscribe("New", rdb); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := u.subscribe("Old", rdb); err != nil {
-		log.Fatal(err)
-	}
-
-	if err := u.subscribe("OldPlusPlus", rdb); err != nil {
-		log.Fatal(err)
-	}
+	//
+	//if err := u.subscribe("general", rdb); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//if err := u.subscribe("programming", rdb); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//if err := u.subscribe("New", rdb); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//if err := u.subscribe("Old", rdb); err != nil {
+	//	log.Fatal(err)
+	//}
+	//
+	//if err := u.subscribe("OldPlusPlus", rdb); err != nil {
+	//	log.Fatal(err)
+	//}
 
 	/*
 		r := mux.NewRouter()
