@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	"log"
+	"os"
 )
 
 type user struct {
@@ -39,8 +40,6 @@ func (u *user) subscribe(room string, rdb *redis.Client) error {
 			return nil
 		}
 	}
-
-	fmt.Println("Cont", room)
 
 	// add room to user
 	userRooms := fmt.Sprintf("user:%s:rooms", u.name)
@@ -85,7 +84,7 @@ func (u *user) doSubscribe(room string, rdb *redis.Client) {
 
 				for k, v := range u.roomsPubsub {
 					if err := v.Unsubscribe(); err != nil {
-						fmt.Println("unable to unsubscribe", err)
+						fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
 					}
 					delete(u.roomsPubsub, k)
 				}
