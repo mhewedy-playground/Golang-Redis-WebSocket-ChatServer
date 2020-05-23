@@ -106,10 +106,6 @@ func (u *user) doSubscribe(room string, rdb *redis.Client) {
 	}()
 }
 
-func (u *user) unsubscribe(room string, rdb *redis.Client) error {
-	return nil
-}
-
 var rdb *redis.Client
 
 func main() {
