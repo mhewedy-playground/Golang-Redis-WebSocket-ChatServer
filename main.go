@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 )
 
 var rdb *redis.Client
@@ -24,14 +23,6 @@ func main() {
 
 	rdb = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for range c {
-			cleanup()
-		}
-	}()
-
 	r := mux.NewRouter()
 
 	r.Path("/chat").Methods("GET").HandlerFunc(api.H(rdb, api.ChatWebSocketHandler))
@@ -44,11 +35,4 @@ func main() {
 	}
 	fmt.Println("chat service started on port", port)
 	log.Fatal(http.ListenAndServe(port, r))
-}
-
-func cleanup() {
-	fmt.Println("Handle graceful shutdown ...")
-	l := api.DisconnectUsers(rdb)
-	fmt.Println(l, "users disconnected.")
-	os.Exit(0)
 }

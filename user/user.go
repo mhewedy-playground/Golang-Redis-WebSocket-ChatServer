@@ -24,9 +24,6 @@ type User struct {
 
 //Connect connect user to user channels on redis
 func Connect(rdb *redis.Client, name string) (*User, error) {
-	if rdb.SIsMember(usersKey, name).Val() {
-		return nil, fmt.Errorf("user %s is already connected", name)
-	}
 	if _, err := rdb.SAdd(usersKey, name).Result(); err != nil {
 		return nil, err
 	}
@@ -135,7 +132,7 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 	return nil
 }
 
-func (u *User) Disconnect(rdb *redis.Client) error {
+func (u *User) Disconnect() error {
 	if u.channelsHandler != nil {
 		if err := u.channelsHandler.Unsubscribe(); err != nil {
 			return err
@@ -148,9 +145,6 @@ func (u *User) Disconnect(rdb *redis.Client) error {
 		u.stopListener <- struct{}{}
 	}
 
-	if _, err := rdb.SRem(usersKey, u.name).Result(); err != nil {
-		return err
-	}
 	close(u.MessageChan)
 
 	return nil

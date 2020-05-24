@@ -83,7 +83,7 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan
 		fmt.Println("connection closed for user", username)
 
 		u := connectedUsers[username]
-		if err := u.Disconnect(rdb); err != nil {
+		if err := u.Disconnect(); err != nil {
 			return err
 		}
 		delete(connectedUsers, username)
@@ -141,15 +141,6 @@ func onChannelMessage(conn *websocket.Conn, r *http.Request) {
 		}
 
 	}()
-}
-
-func DisconnectUsers(rdb *redis.Client) int {
-	l := len(connectedUsers)
-	for _, u := range connectedUsers {
-		_ = u.Disconnect(rdb)
-	}
-	connectedUsers = map[string]*user.User{}
-	return l
 }
 
 func handleWSError(err error, conn *websocket.Conn) {
