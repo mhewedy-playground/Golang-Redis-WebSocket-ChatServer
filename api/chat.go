@@ -43,12 +43,19 @@ func ChatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 		handleError(err, w)
 		return
 	}
-	onDisconnect(r, conn, rdb)
 
-	onReceiveMessage(conn, r, rdb)
+	closeCh := onDisconnect(r, conn, rdb)
 
+	onChannelMessage(conn, r, rdb)
+
+loop:
 	for {
-		onSendMessage(conn, r, rdb)
+		select {
+		case <-closeCh:
+			break loop
+		default:
+			onMessage(conn, r, rdb)
+		}
 	}
 }
 
@@ -64,28 +71,34 @@ func onConnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) error {
 	return nil
 }
 
-func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) {
+func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan struct{} {
+
+	closeCh := make(chan struct{})
+
 	username := r.URL.Query()["username"][0]
 
 	conn.SetCloseHandler(func(code int, text string) error {
-		fmt.Println("connection closed for use", username)
+		fmt.Println("connection closed for user", username)
 
 		u := connectedUsers[username]
 		if err := u.Disconnect(rdb); err != nil {
 			return err
 		}
 		delete(connectedUsers, username)
+		close(closeCh)
 		return nil
 	})
+
+	return closeCh
 }
 
-func onSendMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
+func onMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 
 	var msg msg
 
-	err := conn.ReadJSON(&msg)
-	if err != nil {
-		fmt.Println("Error reading json.", err)
+	if err := conn.ReadJSON(&msg); err != nil {
+		fmt.Println("error reading json", err)
+		return
 	}
 
 	fmt.Printf("Got message: %#v\n", msg)
@@ -96,7 +109,7 @@ func onSendMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 	//u.SendMessage()
 }
 
-func onReceiveMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
+func onChannelMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 
 	username := r.URL.Query()["username"][0]
 	u := connectedUsers[username]

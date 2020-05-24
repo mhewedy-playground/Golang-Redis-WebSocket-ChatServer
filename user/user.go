@@ -126,7 +126,6 @@ func (u *User) doConnect(rdb *redis.Client) error {
 	return nil
 }
 
-// Disconnect closes pubsub connection and stop running goroutine and remove the user from the redis users set
 func (u *User) Disconnect(rdb *redis.Client) error {
 	if u.channelsHandler != nil {
 		if err := u.channelsHandler.Unsubscribe(); err != nil {
@@ -143,6 +142,7 @@ func (u *User) Disconnect(rdb *redis.Client) error {
 	if _, err := rdb.SRem(usersKey, u.name).Result(); err != nil {
 		return err
 	}
+	close(u.MessageChan)
 
 	return nil
 }
