@@ -39,9 +39,10 @@ func main() {
 	r.Path("/users").Methods("GET").HandlerFunc(api.H(rdb, api.UsersHandler))
 
 	port := ":" + os.Getenv("PORT")
-	if port == "" {
+	if port == ":" {
 		port = ":8080"
 	}
+	fmt.Println("chat service started on port", port)
 	log.Fatal(http.ListenAndServe(port, r))
 }
 
