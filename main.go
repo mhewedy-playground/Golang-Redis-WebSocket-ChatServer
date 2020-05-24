@@ -1,7 +1,7 @@
 package main
 
 import (
-	"chat/routes"
+	"chat/api"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
@@ -32,16 +32,16 @@ func main() {
 
 	r := mux.NewRouter()
 
-	r.Path("/chat").Methods("GET").HandlerFunc(routes.H(rdb, routes.ChatHandler))
-	r.Path("/channels").Methods("GET").HandlerFunc(routes.H(rdb, routes.ChannelsHandler))
-	r.Path("/users").Methods("GET").HandlerFunc(routes.H(rdb, routes.UsersHandler))
+	r.Path("/chat").Methods("GET").HandlerFunc(api.H(rdb, api.ChatHandler))
+	r.Path("/channels").Methods("GET").HandlerFunc(api.H(rdb, api.ChannelsHandler))
+	r.Path("/users").Methods("GET").HandlerFunc(api.H(rdb, api.UsersHandler))
 
 	log.Fatal(http.ListenAndServe(":8080", r))
 }
 
 func cleanup() {
 	fmt.Println("Handle graceful shutdown ...")
-	l := routes.DisconnectUsers(rdb)
+	l := api.DisconnectUsers(rdb)
 	fmt.Println(l, "users disconnected.")
 	os.Exit(0)
 }

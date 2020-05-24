@@ -1,14 +1,11 @@
-package routes
+package api
 
 import (
 	"chat/user"
-	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/websocket"
-	"io"
 	"net/http"
-	"os"
 )
 
 var upgrader = websocket.Upgrader{} // use default options
@@ -21,20 +18,16 @@ func H(rdb *redis.Client, fn func(http.ResponseWriter, *http.Request, *redis.Cli
 	}
 }
 
-type WSMsg struct {
+type msg struct {
 	Content string `json:"content"`
-	Type    int    `json:"type"`
-	Command int    `json:"command"`
+	Channel string `json:"channel"`
+	Command int    `json:"command,omitempty"`
 }
-
-const (
-	msgTypeChat = iota
-	msgTypeCommand
-)
 
 const (
 	commandSubscribe = iota
 	commandUnsubscribe
+	commandChat
 )
 
 func ChatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
@@ -53,25 +46,19 @@ func ChatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 	onDisconnect(r, conn, rdb)
 
 	for {
-		t, r, err := conn.NextReader()
-		if err != nil {
-			return
-		}
-		fmt.Println(t)
+		var msg msg
 
-		nw, err := conn.NextWriter(t)
+		err := conn.ReadJSON(&msg)
 		if err != nil {
-			handleError(err, w)
-			break
-		}
-		if _, err := io.Copy(io.MultiWriter(nw, os.Stdout), r); err != nil {
-			handleError(err, w)
-			break
+			fmt.Println("Error reading json.", err)
 		}
 
-		if err := nw.Close(); err != nil {
-			handleError(err, w)
-			break
+		onMessage(msg, r, rdb)
+
+		fmt.Printf("Got message: %#v\n", msg)
+
+		if err = conn.WriteJSON(msg); err != nil {
+			fmt.Println(err)
 		}
 	}
 }
@@ -103,6 +90,14 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) {
 	})
 }
 
+func onMessage(msg msg, r *http.Request, rdb *redis.Client) {
+
+	username := r.URL.Query()["username"][0]
+	_ = connectedUsers[username]
+
+	//u.SendMessage()
+}
+
 func DisconnectUsers(rdb *redis.Client) int {
 	l := len(connectedUsers)
 	for _, u := range connectedUsers {
@@ -110,54 +105,4 @@ func DisconnectUsers(rdb *redis.Client) int {
 	}
 	connectedUsers = map[string]*user.User{}
 	return l
-}
-
-func ChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
-	// TODO list public channels
-	/*	username := mux.Vars(r)["user"]
-
-		if err := newUser(username).connect(rdb); err != nil {
-			handleError(err, w)
-			return
-		}*/
-}
-
-func UsersHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
-
-	list, err := user.List(rdb)
-	if err != nil {
-		handleError(err, w)
-		return
-	}
-	err = json.NewEncoder(w).Encode(list)
-	if err != nil {
-		handleError(err, w)
-		return
-	}
-}
-
-/*
-func subscribeHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
-	username := mux.Vars(r)["user"]
-	channel := mux.Vars(r)["channel"]
-
-	if err := newUser(username).subscribe(rdb, channel); err != nil {
-		handleError(err, w)
-		return
-	}
-}
-
-func unsubscribeHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
-	username := mux.Vars(r)["user"]
-	channel := mux.Vars(r)["channel"]
-
-	if err := newUser(username).unsubscribe(rdb, channel); err != nil {
-		handleError(err, w)
-		return
-	}
-}*/
-
-func handleError(err error, w http.ResponseWriter) {
-	w.WriteHeader(http.StatusBadRequest)
-	w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
 }

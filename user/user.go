@@ -17,6 +17,8 @@ type User struct {
 
 	stopListener    chan struct{}
 	listenerRunning bool
+
+	messageChan chan redis.Message
 }
 
 //Connect connect user to user channels on redis
@@ -31,6 +33,7 @@ func Connect(rdb *redis.Client, name string) (*User, error) {
 	u := &User{
 		name:         name,
 		stopListener: make(chan struct{}),
+		messageChan:  make(chan redis.Message, 1),
 	}
 
 	if err := u.connect(rdb); err != nil {
@@ -112,7 +115,8 @@ func (u *User) doConnect(rdb *redis.Client) error {
 				if !ok {
 					break
 				}
-				fmt.Println("msg:", msg.Payload, "channel:", msg.Channel)
+				fmt.Println("user", u.name, "msg:", msg.Payload, "channel:", msg.Channel)
+				u.messageChan <- *msg
 
 			case <-u.stopListener:
 				break
