@@ -1,12 +1,14 @@
-package main
+package user
 
 import (
 	"fmt"
 	"github.com/go-redis/redis/v7"
-	"os"
 )
 
-const userChannelFmt = "user:%s:channels"
+const (
+	usersKey       = "users"
+	userChannelFmt = "user:%s:channels"
+)
 
 type user struct {
 	name            string
@@ -17,14 +19,27 @@ type user struct {
 	listenerRunning bool
 }
 
-func newUser(name string) *user {
-	return &user{
+func Connect(rdb *redis.Client, name string) (*user, error) {
+	if rdb.SIsMember(usersKey, name).Val() {
+		return nil, fmt.Errorf("user %s is already connected", name)
+	}
+	if _, err := rdb.SAdd(usersKey, name).Result(); err != nil {
+		return nil, err
+	}
+
+	u := &user{
 		name:         name,
 		stopListener: make(chan struct{}),
 	}
+
+	if err := u.connect(rdb); err != nil {
+		return nil, err
+	}
+
+	return u, nil
 }
 
-func (u *user) subscribe(rdb *redis.Client, channel string) error {
+func (u *user) Subscribe(rdb *redis.Client, channel string) error {
 
 	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
 
@@ -38,7 +53,7 @@ func (u *user) subscribe(rdb *redis.Client, channel string) error {
 	return u.connect(rdb)
 }
 
-func (u *user) unsubscribe(rdb *redis.Client, channel string) error {
+func (u *user) Unsubscribe(rdb *redis.Client, channel string) error {
 
 	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
 
@@ -65,10 +80,10 @@ func (u *user) connect(rdb *redis.Client) error {
 
 	if u.channelsHandler != nil {
 		if err := u.channelsHandler.Unsubscribe(); err != nil {
-			fmt.Fprintln(os.Stderr, "unable to unsubscribe", err)
+			return err
 		}
 		if err := u.channelsHandler.Close(); err != nil {
-			fmt.Fprintln(os.Stderr, "unable to close conn", err)
+			return err
 		}
 	}
 	if u.listenerRunning {
@@ -103,6 +118,25 @@ func (u *user) doConnect(rdb *redis.Client) error {
 			}
 		}
 	}()
+	return nil
+}
+
+func (u *user) Disconnect(rdb *redis.Client) error {
+	if u.channelsHandler != nil {
+		if err := u.channelsHandler.Unsubscribe(); err != nil {
+			return err
+		}
+		if err := u.channelsHandler.Close(); err != nil {
+			return err
+		}
+	}
+	if u.listenerRunning {
+		close(u.stopListener)
+	}
+
+	if _, err := rdb.SRem(usersKey, u.name).Result(); err != nil {
+		return err
+	}
 
 	return nil
 }
