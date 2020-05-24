@@ -142,3 +142,7 @@ func (u *User) Disconnect(rdb *redis.Client) error {
 
 	return nil
 }
+
+func List(rdb *redis.Client) ([]string, error) {
+	return rdb.SMembers(usersKey).Result()
+}

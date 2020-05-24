@@ -2,6 +2,7 @@ package routes
 
 import (
 	"chat/user"
+	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/websocket"
@@ -102,11 +103,13 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) {
 	})
 }
 
-func DisconnectUsers(rdb *redis.Client) {
+func DisconnectUsers(rdb *redis.Client) int {
+	l := len(connectedUsers)
 	for _, u := range connectedUsers {
 		_ = u.Disconnect(rdb)
 	}
 	connectedUsers = map[string]*user.User{}
+	return l
 }
 
 func ChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
@@ -117,6 +120,20 @@ func ChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) 
 			handleError(err, w)
 			return
 		}*/
+}
+
+func UsersHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
+
+	list, err := user.List(rdb)
+	if err != nil {
+		handleError(err, w)
+		return
+	}
+	err = json.NewEncoder(w).Encode(list)
+	if err != nil {
+		handleError(err, w)
+		return
+	}
 }
 
 /*
