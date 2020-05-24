@@ -14,7 +14,6 @@ const (
 
 type User struct {
 	name            string
-	channels        []string
 	channelsHandler *redis.PubSub
 
 	stopListener    chan struct{}
@@ -107,21 +106,19 @@ func (u *User) connect(rdb *redis.Client) error {
 		close(u.stopListener)
 	}
 
-	u.channels = c
-
-	return u.doConnect(rdb)
+	return u.doConnect(rdb, c...)
 }
 
-func (u *User) doConnect(rdb *redis.Client) error {
+func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 	// subscribe all channels in one request
-	pubSub := rdb.Subscribe(u.channels...)
+	pubSub := rdb.Subscribe(channels...)
 	// keep channel handler to be used in unsubscribe
 	u.channelsHandler = pubSub
 
 	// The Listener
 	go func() {
 		u.listenerRunning = true
-		fmt.Println("starting the listener for user:", u.name, "on channels:", u.channels)
+		fmt.Println("starting the listener for user:", u.name, "on channels:", channels)
 		for {
 			select {
 			case msg, ok := <-pubSub.Channel():
