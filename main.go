@@ -38,7 +38,11 @@ func main() {
 	r.Path("/user/{user}/channels").Methods("GET").HandlerFunc(api.H(rdb, api.UserChannelsHandler))
 	r.Path("/users").Methods("GET").HandlerFunc(api.H(rdb, api.UsersHandler))
 
-	log.Fatal(http.ListenAndServe(":8080", r))
+	port := ":" + os.Getenv("PORT")
+	if port == "" {
+		port = ":8080"
+	}
+	log.Fatal(http.ListenAndServe(port, r))
 }
 
 func cleanup() {
