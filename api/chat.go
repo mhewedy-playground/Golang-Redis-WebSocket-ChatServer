@@ -35,13 +35,13 @@ func ChatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		handleError(err, w)
+		handleWSError(err, conn)
 		return
 	}
 
 	err = onConnect(r, conn, rdb)
 	if err != nil {
-		handleError(err, w)
+		handleWSError(err, conn)
 		return
 	}
 
@@ -66,9 +66,10 @@ func onConnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) error {
 
 	u, err := user.Connect(rdb, username)
 	if err != nil {
-		return nil
+		return err
 	}
 	connectedUsers[username] = u
+	fmt.Println(connectedUsers)
 	return nil
 }
 
@@ -95,14 +96,11 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan
 
 func onMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 
-	sendErr := func(err error) {
-		_ = conn.WriteJSON(msg{Err: err.Error()})
-	}
-
 	var msg msg
 
 	if err := conn.ReadJSON(&msg); err != nil {
-		sendErr(err)
+		handleWSError(err, conn)
+		return
 	}
 
 	username := r.URL.Query()["username"][0]
@@ -111,15 +109,15 @@ func onMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 	switch msg.Command {
 	case commandSubscribe:
 		if err := u.Subscribe(rdb, msg.Channel); err != nil {
-			sendErr(err)
+			handleWSError(err, conn)
 		}
 	case commandUnsubscribe:
 		if err := u.Unsubscribe(rdb, msg.Channel); err != nil {
-			sendErr(err)
+			handleWSError(err, conn)
 		}
 	case commandChat:
 		if err := user.Chat(rdb, msg.Channel, msg.Content); err != nil {
-			sendErr(err)
+			handleWSError(err, conn)
 		}
 	}
 }
@@ -153,4 +151,8 @@ func DisconnectUsers(rdb *redis.Client) int {
 	}
 	connectedUsers = map[string]*user.User{}
 	return l
+}
+
+func handleWSError(err error, conn *websocket.Conn) {
+	_ = conn.WriteJSON(msg{Err: err.Error()})
 }

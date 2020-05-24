@@ -115,7 +115,6 @@ func (u *User) doConnect(rdb *redis.Client) error {
 				if !ok {
 					break
 				}
-				fmt.Println("user", u.name, "msg:", msg.Payload, "channel:", msg.Channel)
 				u.MessageChan <- *msg
 
 			case <-u.stopListener:
