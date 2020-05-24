@@ -16,8 +16,8 @@ type User struct {
 	name            string
 	channelsHandler *redis.PubSub
 
-	stopListener    chan struct{}
-	listenerRunning bool
+	stopListenerChan chan struct{}
+	listening        bool
 
 	MessageChan chan redis.Message
 }
@@ -29,9 +29,9 @@ func Connect(rdb *redis.Client, name string) (*User, error) {
 	}
 
 	u := &User{
-		name:         name,
-		stopListener: make(chan struct{}),
-		MessageChan:  make(chan redis.Message),
+		name:             name,
+		stopListenerChan: make(chan struct{}),
+		MessageChan:      make(chan redis.Message),
 	}
 
 	if err := u.connect(rdb); err != nil {
@@ -99,8 +99,8 @@ func (u *User) connect(rdb *redis.Client) error {
 			return err
 		}
 	}
-	if u.listenerRunning {
-		u.stopListener <- struct{}{}
+	if u.listening {
+		u.stopListenerChan <- struct{}{}
 	}
 
 	return u.doConnect(rdb, c...)
@@ -114,7 +114,7 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 
 	// The Listener
 	go func() {
-		u.listenerRunning = true
+		u.listening = true
 		fmt.Println("starting the listener for user:", u.name, "on channels:", channels)
 		for {
 			select {
@@ -124,7 +124,7 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 				}
 				u.MessageChan <- *msg
 
-			case <-u.stopListener:
+			case <-u.stopListenerChan:
 				break
 			}
 		}
@@ -141,8 +141,8 @@ func (u *User) Disconnect() error {
 			return err
 		}
 	}
-	if u.listenerRunning {
-		u.stopListener <- struct{}{}
+	if u.listening {
+		u.stopListenerChan <- struct{}{}
 	}
 
 	close(u.MessageChan)
