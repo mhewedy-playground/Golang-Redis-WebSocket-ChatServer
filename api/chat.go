@@ -29,6 +29,7 @@ const (
 	commandSubscribe = iota
 	commandUnsubscribe
 	commandChat
+	commandNone
 )
 
 func ChatWebSocketHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
@@ -132,7 +133,6 @@ func onChannelMessage(conn *websocket.Conn, r *http.Request) {
 			msg := msg{
 				Content: m.Payload,
 				Channel: m.Channel,
-				Command: 0,
 			}
 
 			if err := conn.WriteJSON(msg); err != nil {
