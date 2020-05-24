@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 )
@@ -165,4 +166,28 @@ func Chat(rdb *redis.Client, channel string, content string) error {
 
 func List(rdb *redis.Client) ([]string, error) {
 	return rdb.SMembers(usersKey).Result()
+}
+
+func GetChannels(rdb *redis.Client, username string) ([]string, error) {
+
+	if !rdb.SIsMember(usersKey, username).Val() {
+		return nil, errors.New("user not exists")
+	}
+
+	var c []string
+
+	c1, err := rdb.SMembers(ChannelsKey).Result()
+	if err != nil {
+		return nil, err
+	}
+	c = append(c, c1...)
+
+	// get all user channels (from DB) and start subscribe
+	c2, err := rdb.SMembers(fmt.Sprintf(userChannelFmt, username)).Result()
+	if err != nil {
+		return nil, err
+	}
+	c = append(c, c2...)
+
+	return c, nil
 }

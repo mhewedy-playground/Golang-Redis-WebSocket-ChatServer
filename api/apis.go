@@ -5,17 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-redis/redis/v7"
+	"github.com/gorilla/mux"
 	"net/http"
 )
 
-func ChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
-	// TODO list public channels
-	/*	username := mux.Vars(r)["user"]
+func UserChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
+	username := mux.Vars(r)["user"]
 
-		if err := newUser(username).connect(rdb); err != nil {
-			handleError(err, w)
-			return
-		}*/
+	list, err := user.GetChannels(rdb, username)
+	if err != nil {
+		handleError(err, w)
+		return
+	}
+	err = json.NewEncoder(w).Encode(list)
+	if err != nil {
+		handleError(err, w)
+		return
+	}
+
 }
 
 func UsersHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
