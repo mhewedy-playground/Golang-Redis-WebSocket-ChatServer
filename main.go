@@ -39,7 +39,7 @@ func main() {
 }
 
 func cleanup() {
-	fmt.Println("cleaning ...")
+	fmt.Println("Handle graceful shutdown ...")
 	routes.DisconnectUsers(rdb)
 	os.Exit(0)
 }
