@@ -41,5 +41,5 @@ func UsersHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 
 func handleError(err error, w http.ResponseWriter) {
 	w.WriteHeader(http.StatusBadRequest)
-	w.Write([]byte(fmt.Sprintf(`{"error": "%s"}`, err.Error())))
+	w.Write([]byte(fmt.Sprintf(`{"err": "%s"}`, err.Error())))
 }
