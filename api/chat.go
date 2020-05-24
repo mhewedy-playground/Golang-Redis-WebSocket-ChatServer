@@ -45,21 +45,10 @@ func ChatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 	}
 	onDisconnect(r, conn, rdb)
 
+	onReceiveMessage(conn, r, rdb)
+
 	for {
-		var msg msg
-
-		err := conn.ReadJSON(&msg)
-		if err != nil {
-			fmt.Println("Error reading json.", err)
-		}
-
-		onMessage(msg, r, rdb)
-
-		fmt.Printf("Got message: %#v\n", msg)
-
-		if err = conn.WriteJSON(msg); err != nil {
-			fmt.Println(err)
-		}
+		onSendMessage(conn, r, rdb)
 	}
 }
 
@@ -90,12 +79,43 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) {
 	})
 }
 
-func onMessage(msg msg, r *http.Request, rdb *redis.Client) {
+func onSendMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
+
+	var msg msg
+
+	err := conn.ReadJSON(&msg)
+	if err != nil {
+		fmt.Println("Error reading json.", err)
+	}
+
+	fmt.Printf("Got message: %#v\n", msg)
 
 	username := r.URL.Query()["username"][0]
 	_ = connectedUsers[username]
 
 	//u.SendMessage()
+}
+
+func onReceiveMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
+
+	username := r.URL.Query()["username"][0]
+	u := connectedUsers[username]
+
+	go func() {
+		for m := range u.MessageChan {
+
+			msg := msg{
+				Content: m.Payload,
+				Channel: m.Channel,
+				Command: 0,
+			}
+
+			if err := conn.WriteJSON(msg); err != nil {
+				fmt.Println(err)
+			}
+		}
+
+	}()
 }
 
 func DisconnectUsers(rdb *redis.Client) int {
