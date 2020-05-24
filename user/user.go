@@ -10,7 +10,7 @@ const (
 	userChannelFmt = "user:%s:channels"
 )
 
-type user struct {
+type User struct {
 	name            string
 	channels        []string
 	channelsHandler *redis.PubSub
@@ -19,7 +19,8 @@ type user struct {
 	listenerRunning bool
 }
 
-func Connect(rdb *redis.Client, name string) (*user, error) {
+//Connect connect user to user channels on redis
+func Connect(rdb *redis.Client, name string) (*User, error) {
 	if rdb.SIsMember(usersKey, name).Val() {
 		return nil, fmt.Errorf("user %s is already connected", name)
 	}
@@ -27,7 +28,7 @@ func Connect(rdb *redis.Client, name string) (*user, error) {
 		return nil, err
 	}
 
-	u := &user{
+	u := &User{
 		name:         name,
 		stopListener: make(chan struct{}),
 	}
@@ -39,7 +40,7 @@ func Connect(rdb *redis.Client, name string) (*user, error) {
 	return u, nil
 }
 
-func (u *user) Subscribe(rdb *redis.Client, channel string) error {
+func (u *User) Subscribe(rdb *redis.Client, channel string) error {
 
 	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
 
@@ -53,7 +54,7 @@ func (u *user) Subscribe(rdb *redis.Client, channel string) error {
 	return u.connect(rdb)
 }
 
-func (u *user) Unsubscribe(rdb *redis.Client, channel string) error {
+func (u *User) Unsubscribe(rdb *redis.Client, channel string) error {
 
 	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
 
@@ -67,7 +68,7 @@ func (u *user) Unsubscribe(rdb *redis.Client, channel string) error {
 	return u.connect(rdb)
 }
 
-func (u *user) connect(rdb *redis.Client) error {
+func (u *User) connect(rdb *redis.Client) error {
 	// get all user channels (from DB) and start subscribe
 	c, err := rdb.SMembers(fmt.Sprintf("user:%s:channels", u.name)).Result()
 	if err != nil {
@@ -95,7 +96,7 @@ func (u *user) connect(rdb *redis.Client) error {
 	return u.doConnect(rdb)
 }
 
-func (u *user) doConnect(rdb *redis.Client) error {
+func (u *User) doConnect(rdb *redis.Client) error {
 	// subscribe all channels in one request
 	pubSub := rdb.Subscribe(u.channels...)
 	// keep channel handler to be used in unsubscribe
@@ -121,7 +122,8 @@ func (u *user) doConnect(rdb *redis.Client) error {
 	return nil
 }
 
-func (u *user) Disconnect(rdb *redis.Client) error {
+// Disconnect closes pubsub connection and stop running goroutine and remove the user from the redis users set
+func (u *User) Disconnect(rdb *redis.Client) error {
 	if u.channelsHandler != nil {
 		if err := u.channelsHandler.Unsubscribe(); err != nil {
 			return err

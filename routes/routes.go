@@ -1,6 +1,7 @@
-package main
+package routes
 
 import (
+	"chat/user"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/websocket"
@@ -11,7 +12,9 @@ import (
 
 var upgrader = websocket.Upgrader{} // use default options
 
-func h(rdb *redis.Client, fn func(http.ResponseWriter, *http.Request, *redis.Client)) func(http.ResponseWriter, *http.Request) {
+var connectedUsers = make(map[string]*user.User)
+
+func H(rdb *redis.Client, fn func(http.ResponseWriter, *http.Request, *redis.Client)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		fn(w, r, rdb)
 	}
@@ -33,9 +36,7 @@ const (
 	commandUnsubscribe
 )
 
-func chatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
-
-	r.Header.Set("Access-Control-Allow-Origin", "*")
+func ChatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -43,8 +44,12 @@ func chatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 		return
 	}
 
-	handleConnectionStarted(r, conn, rdb)
-	handleConnectionEnded(r, conn, rdb)
+	err = onConnect(r, conn, rdb)
+	if err != nil {
+		handleError(err, w)
+		return
+	}
+	onDisconnect(r, conn, rdb)
 
 	for {
 		t, r, err := conn.NextReader()
@@ -70,22 +75,41 @@ func chatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 	}
 }
 
-func handleConnectionStarted(r *http.Request, conn *websocket.Conn, rdb *redis.Client) {
+func onConnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) error {
 	username := r.URL.Query()["username"][0]
 	fmt.Println("Connected", conn.RemoteAddr(), username)
-	// TODO connect user here ... and put in user's list
+
+	u, err := user.Connect(rdb, username)
+	if err != nil {
+		return nil
+	}
+	connectedUsers[username] = u
+	return nil
 }
 
-func handleConnectionEnded(r *http.Request, conn *websocket.Conn, rdb *redis.Client) {
+func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) {
 	username := r.URL.Query()["username"][0]
+
 	conn.SetCloseHandler(func(code int, text string) error {
 		fmt.Println("connection closed for use", username)
-		// TODO disconnect user here and remove it from users list
+
+		u := connectedUsers[username]
+		if err := u.Disconnect(rdb); err != nil {
+			return err
+		}
+		delete(connectedUsers, username)
 		return nil
 	})
 }
 
-func channelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
+func DisconnectUsers(rdb *redis.Client) {
+	for _, u := range connectedUsers {
+		_ = u.Disconnect(rdb)
+	}
+	connectedUsers = map[string]*user.User{}
+}
+
+func ChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 	// TODO list public channels
 	/*	username := mux.Vars(r)["user"]
 
