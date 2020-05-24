@@ -2,6 +2,7 @@ package main
 
 import (
 	"chat/api"
+	"chat/user"
 	"fmt"
 	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
@@ -13,11 +14,12 @@ import (
 
 var rdb *redis.Client
 
-/**
-flushall
-sadd user:wael:channels news general
-sadd user:mazen:channels news general
-*/
+func init() {
+	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	defer rdb.Close()
+	rdb.SAdd(user.ChannelsKey, "general", "random")
+}
+
 func main() {
 
 	rdb = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
