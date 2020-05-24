@@ -62,7 +62,7 @@ loop:
 
 func onConnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) error {
 	username := r.URL.Query()["username"][0]
-	fmt.Println("Connected", conn.RemoteAddr(), username)
+	fmt.Println("Connected from: ", conn.RemoteAddr(), "user: ", username)
 
 	u, err := user.Connect(rdb, username)
 	if err != nil {

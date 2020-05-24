@@ -103,7 +103,7 @@ func (u *User) connect(rdb *redis.Client) error {
 		}
 	}
 	if u.listenerRunning {
-		close(u.stopListener)
+		u.stopListener <- struct{}{}
 	}
 
 	return u.doConnect(rdb, c...)
@@ -145,8 +145,7 @@ func (u *User) Disconnect(rdb *redis.Client) error {
 		}
 	}
 	if u.listenerRunning {
-		close(u.stopListener)
-		u.listenerRunning = false
+		u.stopListener <- struct{}{}
 	}
 
 	if _, err := rdb.SRem(usersKey, u.name).Result(); err != nil {
