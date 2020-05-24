@@ -148,6 +148,7 @@ func (u *User) Disconnect(rdb *redis.Client) error {
 	}
 	if u.listenerRunning {
 		close(u.stopListener)
+		u.listenerRunning = false
 	}
 
 	if _, err := rdb.SRem(usersKey, u.name).Result(); err != nil {
