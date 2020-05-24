@@ -147,6 +147,10 @@ func (u *User) Disconnect(rdb *redis.Client) error {
 	return nil
 }
 
+func Chat(rdb *redis.Client, channel string, content string) error {
+	return rdb.Publish(channel, content).Err()
+}
+
 func List(rdb *redis.Client) ([]string, error) {
 	return rdb.SMembers(usersKey).Result()
 }

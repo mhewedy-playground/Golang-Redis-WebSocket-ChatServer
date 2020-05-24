@@ -19,9 +19,10 @@ func H(rdb *redis.Client, fn func(http.ResponseWriter, *http.Request, *redis.Cli
 }
 
 type msg struct {
-	Content string `json:"content"`
-	Channel string `json:"channel"`
+	Content string `json:"content,omitempty"`
+	Channel string `json:"channel,omitempty"`
 	Command int    `json:"command,omitempty"`
+	Err     string `json:"err,omitempty"`
 }
 
 const (
@@ -94,19 +95,33 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan
 
 func onMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 
+	sendErr := func(err error) {
+		_ = conn.WriteJSON(msg{Err: err.Error()})
+	}
+
 	var msg msg
 
 	if err := conn.ReadJSON(&msg); err != nil {
-		fmt.Println("error reading json", err)
-		return
+		sendErr(err)
 	}
 
-	fmt.Printf("Got message: %#v\n", msg)
-
 	username := r.URL.Query()["username"][0]
-	_ = connectedUsers[username]
+	u := connectedUsers[username]
 
-	//u.SendMessage()
+	switch msg.Command {
+	case commandSubscribe:
+		if err := u.Subscribe(rdb, msg.Channel); err != nil {
+			sendErr(err)
+		}
+	case commandUnsubscribe:
+		if err := u.Unsubscribe(rdb, msg.Channel); err != nil {
+			sendErr(err)
+		}
+	case commandChat:
+		if err := user.Chat(rdb, msg.Channel, msg.Content); err != nil {
+			sendErr(err)
+		}
+	}
 }
 
 func onChannelMessage(conn *websocket.Conn, r *http.Request) {
