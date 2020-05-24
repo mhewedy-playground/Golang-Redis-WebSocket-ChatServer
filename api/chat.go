@@ -31,7 +31,7 @@ const (
 	commandChat
 )
 
-func ChatHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
+func ChatWebSocketHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
