@@ -69,7 +69,6 @@ func onConnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) error {
 		return err
 	}
 	connectedUsers[username] = u
-	fmt.Println(connectedUsers)
 	return nil
 }
 
