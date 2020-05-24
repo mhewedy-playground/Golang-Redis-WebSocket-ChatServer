@@ -29,7 +29,6 @@ const (
 	commandSubscribe = iota
 	commandUnsubscribe
 	commandChat
-	commandNone
 )
 
 func ChatWebSocketHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
