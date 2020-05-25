@@ -8,7 +8,7 @@ import (
 	"net/http"
 )
 
-var upgrader = websocket.Upgrader{} // use default options
+var upgrader websocket.Upgrader
 
 var connectedUsers = make(map[string]*user.User)
 
