@@ -118,16 +118,18 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 	go func() {
 		u.listening = true
 		fmt.Println("starting the listener for user:", u.name, "on channels:", channels)
+	loop:
 		for {
 			select {
 			case msg, ok := <-pubSub.Channel():
 				if !ok {
-					break
+					break loop
 				}
 				u.MessageChan <- *msg
 
 			case <-u.stopListenerChan:
-				break
+				fmt.Println("stopping the listener for user:", u.name)
+				break loop
 			}
 		}
 	}()
