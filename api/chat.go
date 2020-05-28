@@ -47,7 +47,7 @@ func ChatWebSocketHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Cli
 
 	closeCh := onDisconnect(r, conn, rdb)
 
-	onMessageChannel(conn, r)
+	onChannelMessage(conn, r)
 
 loop:
 	for {
@@ -55,7 +55,7 @@ loop:
 		case <-closeCh:
 			break loop
 		default:
-			onMessage(conn, r, rdb)
+			onUserMessage(conn, r, rdb)
 		}
 	}
 }
@@ -93,7 +93,7 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan
 	return closeCh
 }
 
-func onMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
+func onUserMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 
 	var msg msg
 
@@ -121,7 +121,7 @@ func onMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 	}
 }
 
-func onMessageChannel(conn *websocket.Conn, r *http.Request) {
+func onChannelMessage(conn *websocket.Conn, r *http.Request) {
 
 	username := r.URL.Query()["username"][0]
 	u := connectedUsers[username]
