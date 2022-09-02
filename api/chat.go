@@ -82,7 +82,7 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan
 		fmt.Println("connection closed for user", username)
 
 		u := connectedUsers[username]
-		if err := u.Disconnect(); err != nil {
+		if err := u.Disconnect(rdb, username); err != nil {
 			return err
 		}
 		delete(connectedUsers, username)

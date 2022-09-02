@@ -135,7 +135,7 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 	return nil
 }
 
-func (u *User) Disconnect() error {
+func (u *User) Disconnect(rdb *redis.Client, userName string) error {
 	if u.channelsHandler != nil {
 		if err := u.channelsHandler.Unsubscribe(); err != nil {
 			return err
@@ -146,6 +146,10 @@ func (u *User) Disconnect() error {
 	}
 	if u.listening {
 		u.stopListenerChan <- struct{}{}
+	}
+
+	if err := rdb.SRem(usersKey, userName).Err(); err != nil {
+		return err
 	}
 
 	close(u.MessageChan)
