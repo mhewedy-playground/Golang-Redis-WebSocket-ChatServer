@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-redis/redis/v7"
+	"time"
 )
 
 const (
@@ -13,6 +14,16 @@ const (
 	userChannelFmt = "user:%s:channels"
 	ChannelsKey    = "channels"
 )
+
+//rdb = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+var rdb = redis.NewClient(&redis.Options{
+	Addr:         "localhost:6379",
+	DialTimeout:  10 * time.Second,
+	ReadTimeout:  30 * time.Second,
+	WriteTimeout: 30 * time.Second,
+	PoolSize:     10,
+	PoolTimeout:  30 * time.Second,
+})
 
 type User struct {
 	name            string
@@ -25,7 +36,8 @@ type User struct {
 }
 
 //Connect connect user to user channels on redis
-func Connect(rdb *redis.Client, name string) (*User, error) {
+func Connect(name string) (*User, error) {
+
 	if _, err := rdb.SAdd(usersKey, name).Result(); err != nil {
 		return nil, err
 	}
@@ -36,14 +48,14 @@ func Connect(rdb *redis.Client, name string) (*User, error) {
 		MessageChan:      make(chan redis.Message),
 	}
 
-	if err := u.connect(rdb); err != nil {
+	if err := u.connect(); err != nil {
 		return nil, err
 	}
 
 	return u, nil
 }
 
-func (u *User) Subscribe(rdb *redis.Client, channel string) error {
+func (u *User) Subscribe(channel string) error {
 
 	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
 
@@ -54,10 +66,10 @@ func (u *User) Subscribe(rdb *redis.Client, channel string) error {
 		return err
 	}
 
-	return u.connect(rdb)
+	return u.connect()
 }
 
-func (u *User) Unsubscribe(rdb *redis.Client, channel string) error {
+func (u *User) Unsubscribe(channel string) error {
 
 	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
 
@@ -68,12 +80,14 @@ func (u *User) Unsubscribe(rdb *redis.Client, channel string) error {
 		return err
 	}
 
-	return u.connect(rdb)
+	return u.connect()
 }
 
-func (u *User) connect(rdb *redis.Client) error {
+func (u *User) connect() error {
 
 	var c []string
+
+	rdb.SAdd(ChannelsKey, "general", "random")
 
 	c1, err := rdb.SMembers(ChannelsKey).Result()
 	if err != nil {
@@ -105,10 +119,10 @@ func (u *User) connect(rdb *redis.Client) error {
 		u.stopListenerChan <- struct{}{}
 	}
 
-	return u.doConnect(rdb, c...)
+	return u.doConnect(c...)
 }
 
-func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
+func (u *User) doConnect(channels ...string) error {
 	// subscribe all channels in one request
 	pubSub := rdb.Subscribe(channels...)
 	// keep channel handler to be used in unsubscribe
@@ -135,7 +149,7 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 	return nil
 }
 
-func (u *User) Disconnect(rdb *redis.Client, userName string) error {
+func (u *User) Disconnect(userName string) error {
 	if u.channelsHandler != nil {
 		if err := u.channelsHandler.Unsubscribe(); err != nil {
 			return err
@@ -157,15 +171,15 @@ func (u *User) Disconnect(rdb *redis.Client, userName string) error {
 	return nil
 }
 
-func Chat(rdb *redis.Client, channel string, content string) error {
+func Chat(channel string, content string) error {
 	return rdb.Publish(channel, content).Err()
 }
 
-func List(rdb *redis.Client) ([]string, error) {
+func List() ([]string, error) {
 	return rdb.SMembers(usersKey).Result()
 }
 
-func GetChannels(rdb *redis.Client, username string) ([]string, error) {
+func GetChannels(username string) ([]string, error) {
 
 	if !rdb.SIsMember(usersKey, username).Val() {
 		return nil, errors.New("user not exists")
