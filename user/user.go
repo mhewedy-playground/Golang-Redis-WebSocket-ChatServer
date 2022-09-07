@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-redis/redis/v7"
+	"log"
 	"time"
 )
 
@@ -21,12 +22,12 @@ var rdb = redis.NewClient(&redis.Options{
 	DialTimeout:  10 * time.Second,
 	ReadTimeout:  30 * time.Second,
 	WriteTimeout: 30 * time.Second,
-	PoolSize:     10,
+	PoolSize:     2,
 	PoolTimeout:  30 * time.Second,
 })
 
 type User struct {
-	name            string
+	Name            string
 	channelsHandler *redis.PubSub
 
 	stopListenerChan chan struct{}
@@ -43,7 +44,7 @@ func Connect(name string) (*User, error) {
 	}
 
 	u := &User{
-		name:             name,
+		Name:             name,
 		stopListenerChan: make(chan struct{}),
 		MessageChan:      make(chan redis.Message),
 	}
@@ -57,7 +58,7 @@ func Connect(name string) (*User, error) {
 
 func (u *User) Subscribe(channel string) error {
 
-	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
+	userChannelsKey := fmt.Sprintf(userChannelFmt, u.Name)
 
 	if rdb.SIsMember(userChannelsKey, channel).Val() {
 		return nil
@@ -71,7 +72,7 @@ func (u *User) Subscribe(channel string) error {
 
 func (u *User) Unsubscribe(channel string) error {
 
-	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
+	userChannelsKey := fmt.Sprintf(userChannelFmt, u.Name)
 
 	if !rdb.SIsMember(userChannelsKey, channel).Val() {
 		return nil
@@ -87,7 +88,7 @@ func (u *User) connect() error {
 
 	var c []string
 
-	rdb.SAdd(ChannelsKey, "general", "random")
+	log.Println("User Connect Invoke.")
 
 	c1, err := rdb.SMembers(ChannelsKey).Result()
 	if err != nil {
@@ -96,14 +97,14 @@ func (u *User) connect() error {
 	c = append(c, c1...)
 
 	// get all user channels (from DB) and start subscribe
-	c2, err := rdb.SMembers(fmt.Sprintf(userChannelFmt, u.name)).Result()
+	c2, err := rdb.SMembers(fmt.Sprintf(userChannelFmt, u.Name)).Result()
 	if err != nil {
 		return err
 	}
 	c = append(c, c2...)
 
 	if len(c) == 0 {
-		fmt.Println("no channels to connect to for user: ", u.name)
+		log.Println("no channels to connect to for user: ", u.Name)
 		return nil
 	}
 
@@ -131,7 +132,12 @@ func (u *User) doConnect(channels ...string) error {
 	// The Listener
 	go func() {
 		u.listening = true
-		fmt.Println("starting the listener for user:", u.name, "on channels:", channels)
+		log.Println("starting the listener for user:", u.Name, "on channels:", channels)
+
+		if err := Chat("general", u.Name+" Connected"); err != nil {
+			log.Printf("User Connect Error: %s \n", err)
+		}
+
 		for {
 			select {
 			case msg, ok := <-pubSub.Channel():
@@ -141,7 +147,7 @@ func (u *User) doConnect(channels ...string) error {
 				u.MessageChan <- *msg
 
 			case <-u.stopListenerChan:
-				fmt.Println("stopping the listener for user:", u.name)
+				log.Println("stopping the listener for user:", u.Name)
 				return
 			}
 		}
@@ -167,6 +173,10 @@ func (u *User) Disconnect(userName string) error {
 	}
 
 	close(u.MessageChan)
+
+	if err := Chat("general", u.Name+" DisConnected"); err != nil {
+		log.Printf("User Connect Error: %s \n", err)
+	}
 
 	return nil
 }

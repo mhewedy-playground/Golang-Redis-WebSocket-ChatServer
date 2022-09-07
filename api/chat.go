@@ -3,21 +3,15 @@ package api
 import (
 	"chat/user"
 	"fmt"
-	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"log"
 	"net/http"
 )
 
 var upgrader websocket.Upgrader
 
 var connectedUsers = make(map[string]*user.User)
-
-func H(rdb *redis.Client, fn func(http.ResponseWriter, *http.Request, *redis.Client)) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		fn(w, r, rdb)
-	}
-}
 
 type msg struct {
 	Content string `json:"content,omitempty"`
@@ -64,7 +58,7 @@ loop:
 func onConnect(r *http.Request, conn *websocket.Conn) error {
 	//username := r.URL.Query()["username"][0]
 	username := mux.Vars(r)["username"]
-	fmt.Println("connected from:", conn.RemoteAddr(), "user:", username)
+	log.Println("connected from:", conn.RemoteAddr(), "user:", username)
 
 	u, err := user.Connect(username)
 	if err != nil {
@@ -81,7 +75,7 @@ func onDisconnect(r *http.Request, conn *websocket.Conn) chan struct{} {
 	//username := r.URL.Query()["username"][0]
 	username := mux.Vars(r)["username"]
 	conn.SetCloseHandler(func(code int, text string) error {
-		fmt.Println("connection closed for user", username)
+		log.Println("connection closed for user", username)
 
 		u := connectedUsers[username]
 		if err := u.Disconnect(username); err != nil {
@@ -126,13 +120,18 @@ func onUserMessage(conn *websocket.Conn, r *http.Request) {
 func onChannelMessage(conn *websocket.Conn, r *http.Request) {
 	//username := r.URL.Query()["username"][0]
 	username := mux.Vars(r)["username"]
-	fmt.Println(username + "Connected")
+	log.Printf(username + " OnChannelMessage \n")
+	log.Printf("online users length [%d] \n", len(connectedUsers))
+
+	for us := range connectedUsers {
+		log.Println(us)
+	}
+
 	u := connectedUsers[username]
 
 	go func() {
 		for m := range u.MessageChan {
-			fmt.Println(m.Payload)
-			fmt.Println(m.Channel)
+			log.Printf("On Channel Message %s, %s, %s\n", u.Name, m.Payload, m.Channel)
 
 			msg := msg{
 				Content: m.Payload,
