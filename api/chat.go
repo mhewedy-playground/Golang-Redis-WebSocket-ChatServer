@@ -3,20 +3,15 @@ package api
 import (
 	"chat/user"
 	"fmt"
-	"github.com/go-redis/redis/v7"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
+	"log"
 	"net/http"
 )
 
 var upgrader websocket.Upgrader
 
 var connectedUsers = make(map[string]*user.User)
-
-func H(rdb *redis.Client, fn func(http.ResponseWriter, *http.Request, *redis.Client)) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		fn(w, r, rdb)
-	}
-}
 
 type msg struct {
 	Content string `json:"content,omitempty"`
@@ -31,7 +26,7 @@ const (
 	commandChat
 )
 
-func ChatWebSocketHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
+func ChatWebSocketHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -39,13 +34,13 @@ func ChatWebSocketHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Cli
 		return
 	}
 
-	err = onConnect(r, conn, rdb)
+	err = onConnect(r, conn)
 	if err != nil {
 		handleWSError(err, conn)
 		return
 	}
 
-	closeCh := onDisconnect(r, conn, rdb)
+	closeCh := onDisconnect(r, conn)
 
 	onChannelMessage(conn, r)
 
@@ -55,16 +50,17 @@ loop:
 		case <-closeCh:
 			break loop
 		default:
-			onUserMessage(conn, r, rdb)
+			onUserMessage(conn, r)
 		}
 	}
 }
 
-func onConnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) error {
-	username := r.URL.Query()["username"][0]
-	fmt.Println("connected from:", conn.RemoteAddr(), "user:", username)
+func onConnect(r *http.Request, conn *websocket.Conn) error {
+	//username := r.URL.Query()["username"][0]
+	username := mux.Vars(r)["username"]
+	log.Println("connected from:", conn.RemoteAddr(), "user:", username)
 
-	u, err := user.Connect(rdb, username)
+	u, err := user.Connect(username)
 	if err != nil {
 		return err
 	}
@@ -72,17 +68,17 @@ func onConnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) error {
 	return nil
 }
 
-func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan struct{} {
+func onDisconnect(r *http.Request, conn *websocket.Conn) chan struct{} {
 
 	closeCh := make(chan struct{})
 
-	username := r.URL.Query()["username"][0]
-
+	//username := r.URL.Query()["username"][0]
+	username := mux.Vars(r)["username"]
 	conn.SetCloseHandler(func(code int, text string) error {
-		fmt.Println("connection closed for user", username)
+		log.Println("connection closed for user", username)
 
 		u := connectedUsers[username]
-		if err := u.Disconnect(); err != nil {
+		if err := u.Disconnect(username); err != nil {
 			return err
 		}
 		delete(connectedUsers, username)
@@ -93,8 +89,7 @@ func onDisconnect(r *http.Request, conn *websocket.Conn, rdb *redis.Client) chan
 	return closeCh
 }
 
-func onUserMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
-
+func onUserMessage(conn *websocket.Conn, r *http.Request) {
 	var msg msg
 
 	if err := conn.ReadJSON(&msg); err != nil {
@@ -102,32 +97,41 @@ func onUserMessage(conn *websocket.Conn, r *http.Request, rdb *redis.Client) {
 		return
 	}
 
-	username := r.URL.Query()["username"][0]
+	//username := r.URL.Query()["username"][0]
+	username := mux.Vars(r)["username"]
 	u := connectedUsers[username]
 
 	switch msg.Command {
 	case commandSubscribe:
-		if err := u.Subscribe(rdb, msg.Channel); err != nil {
+		if err := u.Subscribe(msg.Channel); err != nil {
 			handleWSError(err, conn)
 		}
 	case commandUnsubscribe:
-		if err := u.Unsubscribe(rdb, msg.Channel); err != nil {
+		if err := u.Unsubscribe(msg.Channel); err != nil {
 			handleWSError(err, conn)
 		}
 	case commandChat:
-		if err := user.Chat(rdb, msg.Channel, msg.Content); err != nil {
+		if err := user.Chat(msg.Channel, msg.Content); err != nil {
 			handleWSError(err, conn)
 		}
 	}
 }
 
 func onChannelMessage(conn *websocket.Conn, r *http.Request) {
+	//username := r.URL.Query()["username"][0]
+	username := mux.Vars(r)["username"]
+	log.Printf(username + " OnChannelMessage \n")
+	log.Printf("online users length [%d] \n", len(connectedUsers))
 
-	username := r.URL.Query()["username"][0]
+	for us := range connectedUsers {
+		log.Println(us)
+	}
+
 	u := connectedUsers[username]
 
 	go func() {
 		for m := range u.MessageChan {
+			log.Printf("On Channel Message %s, %s, %s\n", u.Name, m.Payload, m.Channel)
 
 			msg := msg{
 				Content: m.Payload,
@@ -138,10 +142,17 @@ func onChannelMessage(conn *websocket.Conn, r *http.Request) {
 				fmt.Println(err)
 			}
 		}
-
 	}()
 }
 
 func handleWSError(err error, conn *websocket.Conn) {
-	_ = conn.WriteJSON(msg{Err: err.Error()})
+
+	if conn != nil {
+		if err := conn.WriteJSON(msg{Err: err.Error()}); err != nil {
+			fmt.Println(err)
+		}
+	} else {
+		fmt.Println("Websocket Connection is nil")
+	}
+
 }

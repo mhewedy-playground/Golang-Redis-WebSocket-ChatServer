@@ -4,15 +4,14 @@ import (
 	"chat/user"
 	"encoding/json"
 	"fmt"
-	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"net/http"
 )
 
-func UserChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
+func UserChannelsHandler(w http.ResponseWriter, r *http.Request) {
 	username := mux.Vars(r)["user"]
 
-	list, err := user.GetChannels(rdb, username)
+	list, err := user.GetChannels(username)
 	if err != nil {
 		handleError(err, w)
 		return
@@ -25,9 +24,9 @@ func UserChannelsHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Clie
 
 }
 
-func UsersHandler(w http.ResponseWriter, r *http.Request, rdb *redis.Client) {
+func UsersHandler(w http.ResponseWriter, r *http.Request) {
 
-	list, err := user.List(rdb)
+	list, err := user.List()
 	if err != nil {
 		handleError(err, w)
 		return

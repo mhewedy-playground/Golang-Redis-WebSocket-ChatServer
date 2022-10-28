@@ -2,32 +2,31 @@ package main
 
 import (
 	"chat/api"
-	"chat/user"
+	"chat/rdcon"
 	"fmt"
-	"github.com/go-redis/redis/v7"
 	"github.com/gorilla/mux"
 	"log"
 	"net/http"
 	"os"
 )
 
-var rdb *redis.Client
-
-func init() {
-	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
-	defer rdb.Close()
-	rdb.SAdd(user.ChannelsKey, "general", "random")
-}
+const (
+	// used to track users that used chat. mainly for listing users in the /users api, in real world chat app
+	// such user list should be separated into user management module.
+	usersKey       = "users"
+	userChannelFmt = "user:%s:channels"
+	ChannelsKey    = "channels"
+)
 
 func main() {
 
-	rdb = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+	rdcon.GetRedis().Client.SAdd(ChannelsKey, "general", "random")
 
 	r := mux.NewRouter()
 
-	r.Path("/chat").Methods("GET").HandlerFunc(api.H(rdb, api.ChatWebSocketHandler))
-	r.Path("/user/{user}/channels").Methods("GET").HandlerFunc(api.H(rdb, api.UserChannelsHandler))
-	r.Path("/users").Methods("GET").HandlerFunc(api.H(rdb, api.UsersHandler))
+	r.Path("/ws/{username}").Methods("GET").HandlerFunc(api.ChatWebSocketHandler)
+	r.Path("/user/{user}/channels").Methods("GET").HandlerFunc(api.UserChannelsHandler)
+	r.Path("/users").Methods("GET").HandlerFunc(api.UsersHandler)
 
 	port := ":" + os.Getenv("PORT")
 	if port == ":" {

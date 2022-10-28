@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-redis/redis/v7"
+	"log"
+	"time"
 )
 
 const (
@@ -14,8 +16,18 @@ const (
 	ChannelsKey    = "channels"
 )
 
+//rdb = redis.NewClient(&redis.Options{Addr: "localhost:6379"})
+var rdb = redis.NewClient(&redis.Options{
+	Addr:         "localhost:6379",
+	DialTimeout:  10 * time.Second,
+	ReadTimeout:  30 * time.Second,
+	WriteTimeout: 30 * time.Second,
+	PoolSize:     2,
+	PoolTimeout:  30 * time.Second,
+})
+
 type User struct {
-	name            string
+	Name            string
 	channelsHandler *redis.PubSub
 
 	stopListenerChan chan struct{}
@@ -25,27 +37,28 @@ type User struct {
 }
 
 //Connect connect user to user channels on redis
-func Connect(rdb *redis.Client, name string) (*User, error) {
+func Connect(name string) (*User, error) {
+
 	if _, err := rdb.SAdd(usersKey, name).Result(); err != nil {
 		return nil, err
 	}
 
 	u := &User{
-		name:             name,
+		Name:             name,
 		stopListenerChan: make(chan struct{}),
 		MessageChan:      make(chan redis.Message),
 	}
 
-	if err := u.connect(rdb); err != nil {
+	if err := u.connect(); err != nil {
 		return nil, err
 	}
 
 	return u, nil
 }
 
-func (u *User) Subscribe(rdb *redis.Client, channel string) error {
+func (u *User) Subscribe(channel string) error {
 
-	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
+	userChannelsKey := fmt.Sprintf(userChannelFmt, u.Name)
 
 	if rdb.SIsMember(userChannelsKey, channel).Val() {
 		return nil
@@ -54,12 +67,12 @@ func (u *User) Subscribe(rdb *redis.Client, channel string) error {
 		return err
 	}
 
-	return u.connect(rdb)
+	return u.connect()
 }
 
-func (u *User) Unsubscribe(rdb *redis.Client, channel string) error {
+func (u *User) Unsubscribe(channel string) error {
 
-	userChannelsKey := fmt.Sprintf(userChannelFmt, u.name)
+	userChannelsKey := fmt.Sprintf(userChannelFmt, u.Name)
 
 	if !rdb.SIsMember(userChannelsKey, channel).Val() {
 		return nil
@@ -68,12 +81,14 @@ func (u *User) Unsubscribe(rdb *redis.Client, channel string) error {
 		return err
 	}
 
-	return u.connect(rdb)
+	return u.connect()
 }
 
-func (u *User) connect(rdb *redis.Client) error {
+func (u *User) connect() error {
 
 	var c []string
+
+	log.Println("User Connect Invoke.")
 
 	c1, err := rdb.SMembers(ChannelsKey).Result()
 	if err != nil {
@@ -82,14 +97,14 @@ func (u *User) connect(rdb *redis.Client) error {
 	c = append(c, c1...)
 
 	// get all user channels (from DB) and start subscribe
-	c2, err := rdb.SMembers(fmt.Sprintf(userChannelFmt, u.name)).Result()
+	c2, err := rdb.SMembers(fmt.Sprintf(userChannelFmt, u.Name)).Result()
 	if err != nil {
 		return err
 	}
 	c = append(c, c2...)
 
 	if len(c) == 0 {
-		fmt.Println("no channels to connect to for user: ", u.name)
+		log.Println("no channels to connect to for user: ", u.Name)
 		return nil
 	}
 
@@ -105,10 +120,10 @@ func (u *User) connect(rdb *redis.Client) error {
 		u.stopListenerChan <- struct{}{}
 	}
 
-	return u.doConnect(rdb, c...)
+	return u.doConnect(c...)
 }
 
-func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
+func (u *User) doConnect(channels ...string) error {
 	// subscribe all channels in one request
 	pubSub := rdb.Subscribe(channels...)
 	// keep channel handler to be used in unsubscribe
@@ -117,7 +132,12 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 	// The Listener
 	go func() {
 		u.listening = true
-		fmt.Println("starting the listener for user:", u.name, "on channels:", channels)
+		log.Println("starting the listener for user:", u.Name, "on channels:", channels)
+
+		if err := Chat("general", u.Name+" Connected"); err != nil {
+			log.Printf("User Connect Error: %s \n", err)
+		}
+
 		for {
 			select {
 			case msg, ok := <-pubSub.Channel():
@@ -127,7 +147,7 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 				u.MessageChan <- *msg
 
 			case <-u.stopListenerChan:
-				fmt.Println("stopping the listener for user:", u.name)
+				log.Println("stopping the listener for user:", u.Name)
 				return
 			}
 		}
@@ -135,7 +155,7 @@ func (u *User) doConnect(rdb *redis.Client, channels ...string) error {
 	return nil
 }
 
-func (u *User) Disconnect() error {
+func (u *User) Disconnect(userName string) error {
 	if u.channelsHandler != nil {
 		if err := u.channelsHandler.Unsubscribe(); err != nil {
 			return err
@@ -148,20 +168,28 @@ func (u *User) Disconnect() error {
 		u.stopListenerChan <- struct{}{}
 	}
 
+	if err := rdb.SRem(usersKey, userName).Err(); err != nil {
+		return err
+	}
+
 	close(u.MessageChan)
+
+	if err := Chat("general", u.Name+" DisConnected"); err != nil {
+		log.Printf("User Connect Error: %s \n", err)
+	}
 
 	return nil
 }
 
-func Chat(rdb *redis.Client, channel string, content string) error {
+func Chat(channel string, content string) error {
 	return rdb.Publish(channel, content).Err()
 }
 
-func List(rdb *redis.Client) ([]string, error) {
+func List() ([]string, error) {
 	return rdb.SMembers(usersKey).Result()
 }
 
-func GetChannels(rdb *redis.Client, username string) ([]string, error) {
+func GetChannels(username string) ([]string, error) {
 
 	if !rdb.SIsMember(usersKey, username).Val() {
 		return nil, errors.New("user not exists")
